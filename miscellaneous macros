@@ -1,0 +1,132 @@
+//miscellaneous ImageJ macros used for processing raw image files like max projections, split channels, and cropping 
+
+// ask user to select a folder
+dir = getDirectory("Select A folder");
+// get the list of files (& folders) in it
+fileList = getFileList(dir);
+// prepare a folder to output the images
+output_dir = dir + File.separator + "lmna" + File.separator ;
+File.makeDirectory(output_dir);
+
+setBatchMode(true);
+
+// LOOP to process the list of files
+for (i = 0; i < lengthOf(fileList); i++) {
+	// define the "path" 
+	// by concatenation of dir and the i element of the array fileList
+	current_imagePath = dir+fileList[i];
+	// check that the currentFile is not a directory
+	if (!File.isDirectory(current_imagePath)){
+		// open the image
+		run("Bio-Formats Macro Extensions");
+		Ext.setId(current_imagePath);
+		Ext.getSeriesCount(seriesCount);
+		Ext.setSeries(0);
+		for(l=0;l<=seriesCount;l++){
+			run("Bio-Formats Importer", "open=[current_imagePath] autoscale color_mode=Default view=Hyperstack series_"+(l));
+			//open(current_imagePath);
+			run("Z Project...", "projection=[Max Intensity]");
+			title=getTitle();
+			//get slide 1 ID
+			//setSlice(1);
+			//slice1=getImageID();
+			getDimensions(width, height, channels, slices, frames);
+			run("8-bit");
+			if (channels > 1) {
+				run("Split Channels");
+				//run("Stack to Images");
+				
+				//selectImage(slice1);
+				selectWindow("C3-"+title);
+				run("8-bit");
+				name = getTitle();
+				saveAs("jpeg", output_dir+name);
+			}
+			else {
+				run("8-bit");
+				name = getTitle();
+				saveAs("jpeg", output_dir+name);
+			}
+		}
+	}
+	run("Close All");
+}
+setBatchMode(false);
+
+/////////////////////////
+
+//get the input folder
+run("Close All");
+dirSource=getDirectory("Select folder with lmna, p53, hoechst, and ki67 subfolders");
+//recognize the beads and masks folders
+dirlmna=dirSource+"lmna/";
+dirp53=dirSource+"p53/";
+dirki67=dirSource+"ki67/";
+dirHoechst=dirSource+"hoechst/";
+//get the list of files from beads and masks folders
+listlmna=getFileList(dirlmna);
+listp53=getFileList(dirp53);
+listki67=getFileList(dirki67);
+listHoechst=getFileList(dirHoechst);
+
+//make 3 folders for cropped images
+dirClmna=dirSource+"CroppedLaminAC/";
+if (File.exists(dirClmna)){} else {File.makeDirectory(dirClmna);}
+dirCp53=dirSource+"Croppedp53/";
+if (File.exists(dirCp53)){} else {File.makeDirectory(dirCp53);}
+dirCki67=dirSource+"CroppedKi67/";
+if (File.exists(dirCki67)){} else {File.makeDirectory(dirCki67);}
+dirChoechst=dirSource+"CroppedHoechst/";
+if (File.exists(dirChoechst)){} else {File.makeDirectory(dirChoechst);}
+
+
+listprecrop=getFileList(dirlmna);
+//for all the images in masks, open the mask, select the cropping window, crop the mask, open the beads stack, crop the beads stack with the same window
+//after one crop, if the user chooses to crop again, the same mask is opened and latter steps repeat
+for(i=0;i<listprecrop.length;i++){
+	cropcount=0;
+	cropagain=true;
+	while(cropagain==true){
+		open(dirlmna+"/"+listlmna[i]);
+		imageName=getTitle();
+		roiManager("reset");setTool("rectangle");
+		// typeRoi is >=0 if a roi exists; -1 if no roi has been selected.
+		// prevents macro stopping if a bad move has happened (no roi selected, premature click 'ok'...
+		typeRoi=-1;
+		waitForUser("Select a cropping rectangle");
+		typeRoi = selectionType();
+		while (typeRoi<0){
+			showMessage("<html>"+"<big>"+"<font color=red>No roi selected. Draw a rectangle or press 'escape'.<font color=black>");
+			waitForUser("Select a cropping rectangle");	
+			typeRoi = selectionType();	
+		}	
+		getBoundingRect(x, y, width, height);
+		roiManager("Add");
+		roiManager("Select", 0);
+		run("Crop");
+		cropcount=cropcount+1;
+		save(dirClmna+"/Cropped_"+imageName+"_"+cropcount);
+		//cropping p53
+		open(dirp53+"/"+listp53[i]);
+		imageName=getTitle();
+		roiManager("Select", 0);
+		run("Crop");
+		save(dirCp53+"/Cropped_"+imageName+"_"+cropcount);
+		//cropping ki67
+		open(dirki67+"/"+listki67[i]);
+		imageName=getTitle();
+		roiManager("Select", 0);
+		run("Crop");
+		save(dirCki67+"/Cropped_"+imageName+"_"+cropcount);
+		//cropping hoechst
+		open(dirHoechst+"/"+listHoechst[i]);
+		imageName=getTitle();
+		roiManager("Select", 0);
+		run("Crop");
+		save(dirChoechst+"/Cropped_"+imageName+"_"+cropcount);
+		run("Close All");
+		cropagain=getBoolean("Do you want to make another crop for this image?");
+	 	updateResults;
+ 		//selectWindow("Results");
+	}
+}
